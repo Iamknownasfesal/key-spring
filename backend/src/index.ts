@@ -339,6 +339,18 @@ async function gracefulShutdown(signal: string) {
 
 // Start server
 async function start() {
+  // Global error handlers to prevent crashes
+  process.on("uncaughtException", (error) => {
+    logger.error(
+      { error: error.message, stack: error.stack },
+      "Uncaught exception"
+    );
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    logger.error({ reason }, "Unhandled promise rejection");
+  });
+
   logger.info(
     {
       adminAddress: dkgExecutor.getAdminAddress(),

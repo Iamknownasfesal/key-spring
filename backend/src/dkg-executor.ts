@@ -227,12 +227,48 @@ export class DKGExecutorService {
       await this.processPendingRequests();
       await this.processPendingPresigns();
       await this.processPendingSigns();
+      this.cleanupOldRequests();
     } catch (error) {
       logger.error({ error }, "Error in DKG poll");
     }
 
     // Schedule next poll (2 seconds)
     this.pollTimeout = setTimeout(() => this.poll(), 2000);
+  }
+
+  /**
+   * Clean up old completed/failed requests to prevent memory leaks
+   * Keeps requests for 1 hour after completion
+   */
+  private cleanupOldRequests(): void {
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+
+    for (const [id, request] of dkgRequests) {
+      if (
+        (request.status === "completed" || request.status === "failed") &&
+        request.createdAt.getTime() < oneHourAgo
+      ) {
+        dkgRequests.delete(id);
+      }
+    }
+
+    for (const [id, request] of presignRequests) {
+      if (
+        (request.status === "completed" || request.status === "failed") &&
+        request.createdAt.getTime() < oneHourAgo
+      ) {
+        presignRequests.delete(id);
+      }
+    }
+
+    for (const [id, request] of signRequests) {
+      if (
+        (request.status === "completed" || request.status === "failed") &&
+        request.createdAt.getTime() < oneHourAgo
+      ) {
+        signRequests.delete(id);
+      }
+    }
   }
 
   /**
@@ -795,10 +831,12 @@ export class DKGExecutorService {
 
     // Parse signature (r, s from ECDSA signature)
     // Format: r[32-byte]-s[32-byte] (no v/recovery ID from Ika)
-    const r =
-      `0x${Buffer.from(signatureBytes.slice(0, 32)).toString("hex")}` as Hex;
-    const s =
-      `0x${Buffer.from(signatureBytes.slice(32, 64)).toString("hex")}` as Hex;
+    const r = `0x${Buffer.from(signatureBytes.slice(0, 32)).toString(
+      "hex"
+    )}` as Hex;
+    const s = `0x${Buffer.from(signatureBytes.slice(32, 64)).toString(
+      "hex"
+    )}` as Hex;
 
     // Create the transaction object with the EXACT values that were signed
     const unsignedTx: TransactionSerializableEIP1559 = {
