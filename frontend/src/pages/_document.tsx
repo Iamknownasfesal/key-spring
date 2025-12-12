@@ -10,6 +10,10 @@ export default function Document() {
           href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
         />
+        <meta name="application-name" content="KeySpring" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="KeySpring" />
       </Head>
       <body className="antialiased">
         <Main />
@@ -18,4 +22,3 @@ export default function Document() {
     </Html>
   );
 }
-

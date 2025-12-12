@@ -123,6 +123,7 @@ export default function Home() {
   // View state
   const [showWalletPicker, setShowWalletPicker] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
+  const [showDisclaimer, setShowDisclaimer] = useState(true);
 
   // Detect available wallets
   useEffect(() => {
@@ -338,8 +339,9 @@ export default function Home() {
 
       // Step 2: Fetch protocol parameters
       setStep("fetching_params");
-      const protocolPublicParameters =
-        await getProtocolPublicParameters(ETHEREUM_CURVE);
+      const protocolPublicParameters = await getProtocolPublicParameters(
+        ETHEREUM_CURVE
+      );
 
       // Step 3: Compute encryption keys
       setStep("computing_keys");
@@ -469,8 +471,9 @@ export default function Home() {
       };
 
       const serializedUnsigned = serializeTransaction(unsignedTx);
-      const protocolPublicParameters =
-        await getProtocolPublicParameters(ETHEREUM_CURVE);
+      const protocolPublicParameters = await getProtocolPublicParameters(
+        ETHEREUM_CURVE
+      );
 
       // Get presign data
       const ikaClient = getIkaClient();
@@ -574,11 +577,95 @@ export default function Home() {
       <div className="bg-pattern" />
       <div className="bg-grid" />
 
+      {/* Disclaimer Modal */}
+      {showDisclaimer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => {}}
+          />
+          <div className="relative bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-8 max-w-md w-full shadow-2xl fade-in">
+            {/* Warning Icon */}
+            <div className="flex justify-center mb-6">
+              <div className="w-16 h-16 rounded-full bg-[rgba(234,179,8,0.15)] flex items-center justify-center">
+                <span className="text-4xl">⚠️</span>
+              </div>
+            </div>
+
+            {/* Title */}
+            <h2 className="text-2xl font-bold text-center mb-2">
+              Testnet Demo Only
+            </h2>
+            <p className="text-center text-[var(--warning)] font-medium mb-6">
+              Developer Warning
+            </p>
+
+            {/* Content */}
+            <div className="space-y-4 text-sm text-[var(--text-secondary)] mb-8">
+              <p>
+                This cross-chain wallet demo is provided for{" "}
+                <strong className="text-[var(--text-primary)]">
+                  developer testing and educational purposes only
+                </strong>{" "}
+                and must be used on{" "}
+                <strong className="text-[var(--text-primary)]">
+                  Base Sepolia testnet only
+                </strong>
+                .
+              </p>
+              <p>
+                It has not been audited and may contain bugs or unexpected
+                behavior.{" "}
+                <strong className="text-[var(--error)]">
+                  Do not use with real funds or production wallets.
+                </strong>
+              </p>
+              <p>Use only test keys and disposable testnet amounts.</p>
+            </div>
+
+            {/* Risk acknowledgment */}
+            <div className="p-4 rounded-lg bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.2)] mb-6">
+              <p className="text-sm text-center text-[var(--error)] font-medium">
+                You assume all risk by proceeding.
+              </p>
+            </div>
+
+            {/* Button */}
+            <button
+              onClick={() => setShowDisclaimer(false)}
+              className="btn-primary w-full"
+            >
+              I Understand, Continue
+            </button>
+
+            {/* Powered by */}
+            <p className="text-center text-xs text-[var(--text-muted)] mt-4">
+              Powered by{" "}
+              <a
+                href="https://ika.xyz"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="link"
+              >
+                Ika
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-6">
         {/* Header */}
         <div className="text-center mb-10 fade-in">
+          <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
+            <span className="text-xl">🦑</span>
+            <span className="text-sm font-medium text-[var(--text-secondary)]">
+              Powered by Ika
+            </span>
+          </div>
+
           <h1 className="text-4xl sm:text-5xl font-bold mb-4 tracking-tight">
-            <span className="gradient-text">Cross-Chain</span> Wallet
+            <span className="gradient-text">KeySpring</span>
           </h1>
 
           <p className="text-[var(--text-secondary)] max-w-lg mx-auto text-lg">
@@ -715,10 +802,10 @@ export default function Home() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
                   />
                 </svg>
-                Uses Ika network for secure key generation
+                Secured by Ika distributed key generation
               </div>
             </div>
           ) : step === "completed" && dkgResult ? (
@@ -864,7 +951,11 @@ export default function Home() {
               <div className="mb-6">
                 <div className="section-title flex items-center gap-2">
                   <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${presignResult?.presignId ? "bg-[var(--success)]" : "bg-[var(--accent-primary)]"} text-[var(--bg-primary)]`}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                      presignResult?.presignId
+                        ? "bg-[var(--success)]"
+                        : "bg-[var(--accent-primary)]"
+                    } text-[var(--bg-primary)]`}
                   >
                     {presignResult?.presignId ? "✓" : "1"}
                   </span>
@@ -917,7 +1008,11 @@ export default function Home() {
                 <div className="fade-in">
                   <div className="section-title flex items-center gap-2">
                     <span
-                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${signResult?.status === "completed" ? "bg-[var(--success)]" : "bg-[var(--accent-primary)]"} text-[var(--bg-primary)]`}
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                        signResult?.status === "completed"
+                          ? "bg-[var(--success)]"
+                          : "bg-[var(--accent-primary)]"
+                      } text-[var(--bg-primary)]`}
                     >
                       {signResult?.status === "completed" ? "✓" : "2"}
                     </span>
@@ -1099,7 +1194,13 @@ export default function Home() {
                 {steps.map((s, i) => (
                   <div
                     key={s}
-                    className={`step-dot ${i < currentStepIndex ? "completed" : i === currentStepIndex ? "active" : ""}`}
+                    className={`step-dot ${
+                      i < currentStepIndex
+                        ? "completed"
+                        : i === currentStepIndex
+                        ? "active"
+                        : ""
+                    }`}
                   />
                 ))}
               </div>
@@ -1109,6 +1210,14 @@ export default function Home() {
 
         {/* Footer */}
         <div className="mt-10 text-center text-[var(--text-muted)] text-sm max-w-md">
+          {/* Testnet Warning */}
+          <div className="mb-6 p-3 rounded-lg bg-[rgba(234,179,8,0.1)] border border-[rgba(234,179,8,0.2)]">
+            <p className="text-[var(--warning)] text-xs font-medium">
+              ⚠️ Testnet Demo — For testing purposes only. Do not use with real
+              funds.
+            </p>
+          </div>
+
           <div className="flex items-center justify-center gap-4 mb-4">
             <div className="feature-tag">
               <svg
@@ -1145,7 +1254,8 @@ export default function Home() {
           </div>
 
           <p className="mb-3">
-            Your wallet keys are generated using{" "}
+            <strong className="text-[var(--text-primary)]">KeySpring</strong>{" "}
+            uses{" "}
             <a
               href="https://ika.xyz"
               target="_blank"
@@ -1154,8 +1264,8 @@ export default function Home() {
             >
               Ika
             </a>{" "}
-            distributed key generation. No one can access your funds without
-            your approval.
+            distributed key generation. Your secret key never leaves your
+            browser.
           </p>
 
           <div className="flex items-center justify-center gap-3 text-xs">
@@ -1165,7 +1275,7 @@ export default function Home() {
               rel="noopener noreferrer"
               className="link"
             >
-              Learn More
+              Ika Docs
             </a>
             <span>·</span>
             <a
@@ -1175,6 +1285,15 @@ export default function Home() {
               className="link"
             >
               Get Test ETH
+            </a>
+            <span>·</span>
+            <a
+              href="https://github.com/nicola/ika-ephemeral-backend-dkg"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="link"
+            >
+              GitHub
             </a>
           </div>
         </div>

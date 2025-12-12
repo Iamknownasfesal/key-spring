@@ -2,6 +2,18 @@
 
 Create an Ethereum wallet from any browser wallet and send ETH on Base Sepolia — all non-custodially using Ika's distributed key generation.
 
+---
+
+> ⚠️ **Testnet Only — Developer Warning**
+>
+> This cross-chain wallet demo is provided for **developer testing and educational purposes only** and must be used on **Base Sepolia testnet only** (not mainnet).
+>
+> It has not been audited and may contain bugs or unexpected behavior. **Do not use it with real funds or production wallets.** Use only test keys and disposable testnet amounts.
+>
+> **You assume all risk by proceeding.**
+
+---
+
 ## What This Demo Shows
 
 This demo showcases how Ika enables **cross-chain wallet creation**. Using your existing wallet (MetaMask, Phantom, etc.), you can:
