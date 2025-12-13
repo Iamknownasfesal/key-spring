@@ -1,11 +1,9 @@
 [build]
-builder = "nixpacks"
+builder = "NIXPACKS"
 
 [deploy]
 healthcheckPath = "/health"
 healthcheckTimeout = 300
-restartPolicyType = "always"
-restartPolicyMaxRetries = -1
+restartPolicyType = "ALWAYS"
+restartPolicyMaxRetries = 100
 numReplicas = 1
-# Prevent Railway from sleeping the service
-sleepApplication = false
