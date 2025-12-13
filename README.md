@@ -38,6 +38,7 @@ bun install
 
 # Set your Sui admin key
 export SUI_ADMIN_SECRET_KEY="your-base64-encoded-key"
+export IKA_COIN_ID="your-ika-coin-id" # used for gas
 
 bun run dev
 ```

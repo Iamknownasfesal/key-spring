@@ -10,6 +10,8 @@ const envSchema = z.object({
   // Sui Admin Keypair (base64 encoded secret key)
   SUI_ADMIN_SECRET_KEY: z.string().min(1, "SUI_ADMIN_SECRET_KEY is required"),
 
+  IKA_COIN_ID: z.string().min(1, "IKA_COIN_ID is required"),
+
   // Sui Network
   SUI_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
 });
@@ -39,6 +41,9 @@ export const config = {
   server: {
     port: env.PORT,
     host: env.HOST,
+  },
+  ika: {
+    coinId: env.IKA_COIN_ID,
   },
   sui: {
     network: env.SUI_NETWORK,

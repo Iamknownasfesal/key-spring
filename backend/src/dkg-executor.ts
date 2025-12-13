@@ -530,9 +530,7 @@ export class DKGExecutorService {
         tx
       ),
       null,
-      tx.object(
-        "0x8552107739398dc9c64218e4f9d484a9ee1d18b8ca9b32cf5f4548d50f814f59"
-      ),
+      tx.object(config.ika.coinId),
       tx.gas,
       tx
     );
@@ -642,9 +640,7 @@ export class DKGExecutorService {
         random32Bytes,
         tx
       ),
-      tx.object(
-        "0x8552107739398dc9c64218e4f9d484a9ee1d18b8ca9b32cf5f4548d50f814f59"
-      ),
+      tx.object(config.ika.coinId),
       tx.gas,
       tx
     );
@@ -763,9 +759,7 @@ export class DKGExecutorService {
       verifiedMessageApproval,
       new Uint8Array(data.userSignMessage),
       ikaTx.createSessionIdentifier(),
-      tx.object(
-        "0x8552107739398dc9c64218e4f9d484a9ee1d18b8ca9b32cf5f4548d50f814f59"
-      ),
+      tx.object(config.ika.coinId),
       tx.gas,
       tx
     );
