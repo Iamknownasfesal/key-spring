@@ -11,6 +11,7 @@ import {
 import { SuiClient } from "@mysten/sui/client";
 
 const ADMIN_ADDRESS =
+  process.env.NEXT_PUBLIC_ADMIN_ADDRESS ||
   "0x60c2fb8e919a6bd487b8424524f484da5d0b2a9b3e0300d993707212ffbf953e";
 
 // Message to sign for deterministic key derivation

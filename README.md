@@ -112,9 +112,10 @@ Your Wallet                    Ika Network                   Base Sepolia
 
 ### Frontend Environment
 
-| Variable              | Description | Default                 |
-| --------------------- | ----------- | ----------------------- |
-| `NEXT_PUBLIC_API_URL` | Backend URL | `http://localhost:5153` |
+| Variable                    | Description               | Default                 |
+| --------------------------- | ------------------------- | ----------------------- |
+| `NEXT_PUBLIC_API_URL`       | Backend URL               | `http://localhost:5153` |
+| `NEXT_PUBLIC_ADMIN_ADDRESS` | Sui admin address for DKG | Required                |
 
 ## Learn More
 
