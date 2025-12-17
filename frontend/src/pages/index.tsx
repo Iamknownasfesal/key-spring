@@ -494,11 +494,15 @@ export default function Home() {
 
       const dWallet = await ikaClient.getDWallet(dkgResult.dWalletObjectId);
 
+      const publicOutput = new Uint8Array(
+        dWallet.state.Active?.public_output ??
+          dWallet.state.AwaitingKeyHolderSignature?.public_output ??
+          []
+      );
+
       const userSignMsg = await createUserSignMessage({
         protocolPublicParameters,
-        publicOutput: new Uint8Array(
-          dWallet.state.AwaitingKeyHolderSignature?.public_output || []
-        ),
+        publicOutput,
         secretShare: new Uint8Array(userSecretKeyShareRef.current),
         presignBytes: new Uint8Array(presignOutput),
         message: messageBytes,
