@@ -32,6 +32,16 @@ import {
   type WalletType,
 } from "@/lib/dkg";
 import { UserShareEncryptionKeys } from "@ika.xyz/sdk";
+import {
+  checkPasskeySupport,
+  hasStoredCredential,
+  getStoredCredential,
+  registerPasskey,
+  authenticateWithPasskey,
+  prfSecretToSeedString,
+  clearStoredCredential,
+  updateCredentialEthAddress,
+} from "@/lib/passkey";
 
 // Base Sepolia chain ID
 const BASE_SEPOLIA_CHAIN_ID = 84532;
@@ -125,6 +135,14 @@ export default function Home() {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(true);
 
+  // Passkey state
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [prfSupported, setPrfSupported] = useState(false);
+  const [hasPasskey, setHasPasskey] = useState(false);
+  const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+  const [isPasskeyMode, setIsPasskeyMode] = useState(false);
+
   // Detect available wallets
   useEffect(() => {
     const detectWallets = () => {
@@ -182,6 +200,24 @@ export default function Home() {
     return () => clearTimeout(timeout);
   }, []);
 
+  // Detect passkey support
+  useEffect(() => {
+    const detectPasskey = async () => {
+      const support = await checkPasskeySupport();
+      setPasskeySupported(support.webauthnSupported);
+      setPrfSupported(support.prfSupported);
+      setHasPasskey(hasStoredCredential());
+    };
+    detectPasskey();
+  }, []);
+
+  // Update stored passkey credential with ethereum address when wallet is created
+  useEffect(() => {
+    if (isPasskeyMode && dkgResult?.ethereumAddress) {
+      updateCredentialEthAddress(dkgResult.ethereumAddress);
+    }
+  }, [isPasskeyMode, dkgResult?.ethereumAddress]);
+
   // Connect wallet
   const connectWallet = useCallback(async (wallet: WalletInfo) => {
     setIsConnecting(true);
@@ -226,8 +262,74 @@ export default function Home() {
     }
     setWalletAddress(null);
     setSelectedWallet(null);
+    setIsPasskeyMode(false);
+    setPasskeyError(null);
     reset();
   }, [selectedWallet]);
+
+  // Connect with passkey
+  const connectWithPasskey = useCallback(
+    async (isNewRegistration: boolean) => {
+      setIsPasskeyLoading(true);
+      setPasskeyError(null);
+      setError(null);
+
+      try {
+        if (isNewRegistration) {
+          // Register new passkey
+          const regResult = await registerPasskey();
+          if (!regResult.success) {
+            setPasskeyError(regResult.error || "Failed to create passkey");
+            setIsPasskeyLoading(false);
+            return;
+          }
+          if (!regResult.prfEnabled) {
+            setPasskeyError(
+              "Your device does not support the required PRF extension. Please try a different browser or device."
+            );
+            setIsPasskeyLoading(false);
+            return;
+          }
+          setHasPasskey(true);
+        }
+
+        // Authenticate and get PRF secret
+        const authResult = await authenticateWithPasskey();
+        if (!authResult.success || !authResult.prfSecret) {
+          setPasskeyError(authResult.error || "Authentication failed");
+          setIsPasskeyLoading(false);
+          return;
+        }
+
+        // Convert PRF secret to seed string (same format as wallet signature)
+        const seedString = prfSecretToSeedString(authResult.prfSecret);
+
+        // Set passkey mode
+        setIsPasskeyMode(true);
+        setWalletAddress("passkey-user");
+        setSelectedWallet({
+          id: "passkey",
+          name: "Passkey",
+          icon: "🔐",
+          type: "ethereum" as WalletType,
+          getProvider: () => null,
+        });
+
+        // Store seed in ref for DKG execution (convert hex to bytes)
+        signatureRef.current = new Uint8Array(
+          Buffer.from(seedString.replace(/^0x/, ""), "hex")
+        );
+      } catch (err) {
+        console.error("Passkey error:", err);
+        setPasskeyError(
+          err instanceof Error ? err.message : "Passkey authentication failed"
+        );
+      } finally {
+        setIsPasskeyLoading(false);
+      }
+    },
+    []
+  );
 
   // Poll for DKG status
   useEffect(() => {
@@ -319,34 +421,52 @@ export default function Home() {
 
   // Execute DKG flow
   const executeDKG = useCallback(async () => {
-    if (!selectedWallet || !walletAddress) {
-      setError("Please connect your wallet first");
-      return;
+    // For passkey mode, we already have the seed in signatureRef
+    if (isPasskeyMode) {
+      if (!signatureRef.current) {
+        setError("Passkey authentication required. Please try again.");
+        return;
+      }
+    } else {
+      // Traditional wallet mode
+      if (!selectedWallet || !walletAddress) {
+        setError("Please connect your wallet first");
+        return;
+      }
     }
 
     setError(null);
-    setStep("signing");
 
     try {
-      // Step 1: Sign message for key derivation
-      const signature = await signWithWallet(DKG_SIGN_MESSAGE);
+      let seedString: string;
 
-      // Convert signature to bytes
-      const sigBytes = new Uint8Array(
-        Buffer.from(signature.replace(/^0x/, ""), "hex")
-      );
-      signatureRef.current = sigBytes;
+      if (isPasskeyMode) {
+        // Passkey mode: use the PRF-derived seed already stored
+        setStep("computing_keys");
+        seedString = prfSecretToSeedString(signatureRef.current!);
+      } else {
+        // Traditional wallet mode: sign message for key derivation
+        setStep("signing");
+        const signature = await signWithWallet(DKG_SIGN_MESSAGE);
+        seedString = signature;
 
-      // Step 2: Fetch protocol parameters
+        // Convert signature to bytes
+        const sigBytes = new Uint8Array(
+          Buffer.from(signature.replace(/^0x/, ""), "hex")
+        );
+        signatureRef.current = sigBytes;
+      }
+
+      // Fetch protocol parameters
       setStep("fetching_params");
       const protocolPublicParameters = await getProtocolPublicParameters(
         ETHEREUM_CURVE
       );
 
-      // Step 3: Compute encryption keys
+      // Compute encryption keys
       setStep("computing_keys");
       const encryptionKeys = await computeEncryptionKeys(
-        signature,
+        seedString,
         ETHEREUM_CURVE
       );
       userShareEncryptionKeysRef.current = encryptionKeys;
@@ -355,7 +475,7 @@ export default function Home() {
       const sessionIdentifier = new Uint8Array(32);
       crypto.getRandomValues(sessionIdentifier);
 
-      // Step 4: Prepare DKG locally
+      // Prepare DKG locally
       setStep("preparing_dkg");
       const dkgResult = await prepareDKGLocal({
         curve: ETHEREUM_CURVE,
@@ -368,7 +488,7 @@ export default function Home() {
       userSecretKeyShareRef.current = dkgResult.userSecretKeyShare;
       userPublicOutputRef.current = dkgResult.userPublicOutput;
 
-      // Step 5: Submit to backend
+      // Submit to backend
       setStep("submitting");
       const response = await submitDKG({
         userPublicOutput: dkgResult.userPublicOutput,
@@ -391,7 +511,7 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setStep("failed");
     }
-  }, [selectedWallet, walletAddress]);
+  }, [isPasskeyMode, selectedWallet, walletAddress]);
 
   // Request presign
   const handleRequestPresign = useCallback(async () => {
@@ -552,6 +672,7 @@ export default function Home() {
     setIsSigning(false);
     setRecipientAddress("");
     setEthAmount("0.001");
+    setPasskeyError(null);
     userSecretKeyShareRef.current = null;
     userPublicOutputRef.current = null;
     signatureRef.current = null;
@@ -673,7 +794,7 @@ export default function Home() {
           </h1>
 
           <p className="text-[var(--text-secondary)] max-w-lg mx-auto text-lg">
-            Create a new Ethereum wallet using your existing wallet.
+            Create a new Ethereum wallet using your existing wallet or passkey.
             <br />
             Send ETH on Base — your keys, your control.
           </p>
@@ -688,7 +809,7 @@ export default function Home() {
                 Connect Your Wallet
               </h2>
 
-              {availableWallets.length === 0 ? (
+              {availableWallets.length === 0 && !passkeySupported ? (
                 <div className="text-center py-8">
                   <div className="text-5xl mb-4">🔌</div>
                   <p className="text-[var(--text-secondary)] mb-4">
@@ -704,58 +825,196 @@ export default function Home() {
                   </a>
                 </div>
               ) : (
-                <div className="wallet-list">
-                  {availableWallets.map((wallet) => (
-                    <button
-                      key={wallet.id}
-                      onClick={() => connectWallet(wallet)}
-                      disabled={isConnecting}
-                      className="wallet-btn"
-                    >
-                      <div
-                        className="wallet-btn-icon"
-                        style={{
-                          background:
-                            wallet.type === "solana"
-                              ? "linear-gradient(135deg, #9945FF 0%, #14F195 100%)"
-                              : "linear-gradient(135deg, #F6851B 0%, #E2761B 100%)",
-                        }}
-                      >
-                        {wallet.icon}
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-medium">{wallet.name}</div>
-                        <div className="text-sm text-[var(--text-muted)]">
-                          {wallet.type === "solana"
-                            ? "Solana wallet"
-                            : "Ethereum wallet"}
-                        </div>
-                      </div>
-                      <svg
-                        className="w-5 h-5 text-[var(--text-muted)]"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 5l7 7-7 7"
-                        />
-                      </svg>
-                    </button>
-                  ))}
-                </div>
+                <>
+                  {/* Wallet list */}
+                  {availableWallets.length > 0 && (
+                    <div className="wallet-list">
+                      {availableWallets.map((wallet) => (
+                        <button
+                          key={wallet.id}
+                          onClick={() => connectWallet(wallet)}
+                          disabled={isConnecting}
+                          className="wallet-btn"
+                        >
+                          <div
+                            className="wallet-btn-icon"
+                            style={{
+                              background:
+                                wallet.type === "solana"
+                                  ? "linear-gradient(135deg, #9945FF 0%, #14F195 100%)"
+                                  : "linear-gradient(135deg, #F6851B 0%, #E2761B 100%)",
+                            }}
+                          >
+                            {wallet.icon}
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium">{wallet.name}</div>
+                            <div className="text-sm text-[var(--text-muted)]">
+                              {wallet.type === "solana"
+                                ? "Solana wallet"
+                                : "Ethereum wallet"}
+                            </div>
+                          </div>
+                          <svg
+                            className="w-5 h-5 text-[var(--text-muted)]"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Passkey Option */}
+                  {passkeySupported && prfSupported && (
+                    <div className={availableWallets.length > 0 ? "mt-6" : ""}>
+                      {availableWallets.length > 0 && (
+                        <>
+                          <div className="flex items-center gap-4 my-4">
+                            <div className="flex-1 h-px bg-[var(--border-subtle)]" />
+                            <span className="text-sm text-[var(--text-muted)]">
+                              or use a passkey
+                            </span>
+                            <div className="flex-1 h-px bg-[var(--border-subtle)]" />
+                          </div>
+                        </>
+                      )}
+
+                      {hasPasskey ? (
+                        <button
+                          onClick={() => connectWithPasskey(false)}
+                          disabled={isPasskeyLoading}
+                          className="wallet-btn w-full"
+                        >
+                          <div
+                            className="wallet-btn-icon"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, #00d4aa 0%, #8b5cf6 100%)",
+                            }}
+                          >
+                            🔐
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium">
+                              Continue with Passkey
+                            </div>
+                            <div className="text-sm text-[var(--text-muted)]">
+                              Use your saved passkey
+                            </div>
+                          </div>
+                          {isPasskeyLoading ? (
+                            <div className="w-5 h-5 border-2 border-[var(--text-muted)] border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg
+                              className="w-5 h-5 text-[var(--text-muted)]"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5l7 7-7 7"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => connectWithPasskey(true)}
+                          disabled={isPasskeyLoading}
+                          className="wallet-btn w-full"
+                        >
+                          <div
+                            className="wallet-btn-icon"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, #00d4aa 0%, #8b5cf6 100%)",
+                            }}
+                          >
+                            🔐
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium">
+                              Create Passkey Wallet
+                            </div>
+                            <div className="text-sm text-[var(--text-muted)]">
+                              Passwordless, secure, biometric
+                            </div>
+                          </div>
+                          {isPasskeyLoading ? (
+                            <div className="w-5 h-5 border-2 border-[var(--text-muted)] border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg
+                              className="w-5 h-5 text-[var(--text-muted)]"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5l7 7-7 7"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+
+                      {passkeyError && (
+                        <p className="text-[var(--error)] text-sm mt-3 text-center">
+                          {passkeyError}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* PRF not supported warning */}
+                  {passkeySupported && !prfSupported && (
+                    <div className="mt-4 p-3 rounded-lg bg-[rgba(234,179,8,0.1)] border border-[rgba(234,179,8,0.2)]">
+                      <p className="text-[var(--warning)] text-xs text-center">
+                        Passkeys available but PRF extension not supported on
+                        this device
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ) : step === "idle" ? (
             /* Ready to Create Wallet */
             <div className="text-center">
               <div className="address-display justify-center mb-6">
-                <span className="dot" />
+                <span
+                  className="dot"
+                  style={
+                    isPasskeyMode
+                      ? {
+                          background:
+                            "linear-gradient(135deg, #00d4aa 0%, #8b5cf6 100%)",
+                        }
+                      : undefined
+                  }
+                />
                 <span>
-                  {walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}
+                  {isPasskeyMode ? (
+                    <>🔐 Passkey Connected</>
+                  ) : (
+                    <>
+                      {walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}
+                    </>
+                  )}
                 </span>
                 <button
                   onClick={disconnectWallet}
@@ -783,8 +1042,9 @@ export default function Home() {
                   Create Your Wallet
                 </h2>
                 <p className="text-[var(--text-secondary)]">
-                  Sign a message to create a new Ethereum address. Your private
-                  key stays with you.
+                  {isPasskeyMode
+                    ? "Your passkey will secure a new Ethereum address. Your private key stays with you."
+                    : "Sign a message to create a new Ethereum address. Your private key stays with you."}
                 </p>
               </div>
 
@@ -943,6 +1203,25 @@ export default function Home() {
                         >
                           Get free testnet ETH →
                         </a>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Passkey Recovery Warning */}
+              {isPasskeyMode && (
+                <div className="mb-6 p-4 rounded-lg bg-[rgba(139,92,246,0.1)] border border-[rgba(139,92,246,0.2)]">
+                  <div className="flex items-start gap-3">
+                    <span className="text-xl">🔐</span>
+                    <div>
+                      <p className="font-medium text-[#a78bfa]">
+                        Passkey-Controlled Wallet
+                      </p>
+                      <p className="text-sm text-[var(--text-secondary)] mt-1">
+                        This wallet is secured by your passkey. If you delete
+                        your passkey from your device, you will lose access to
+                        this wallet permanently.
                       </p>
                     </div>
                   </div>
