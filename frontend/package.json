@@ -8,20 +8,23 @@
     "start": "next start"
   },
   "dependencies": {
-    "@ika.xyz/sdk": "^0.2.3",
-    "@mysten/sui": "^1.45.0",
-    "next": "15.3.8",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "viem": "^2.23.10"
+    "@ika.xyz/sdk": "^0.5.0",
+    "@mysten/sui": "^2.26.1",
+    "next": "16.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "viem": "^2.55.17"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "autoprefixer": "^10.4.21",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "postcss": "^8.5.4",
-    "tailwindcss": "^3.4.17",
-    "typescript": "^5"
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
