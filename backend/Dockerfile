@@ -1,5 +1,7 @@
-# Use official Bun image for better stability on Railway
-FROM oven/bun:1.1-alpine AS base
+# Use official Bun image for better stability on Railway.
+# Pinned to 1.3 because bun.lockb is written in lockfile format v3, which bun
+# 1.1 cannot read — `bun install --frozen-lockfile` fails outright against it.
+FROM oven/bun:1.3-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps

@@ -1,4 +1,4 @@
-import { SuiClient } from "@mysten/sui/client";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import {
   SerialTransactionExecutor,
@@ -71,7 +71,7 @@ const signRequests = new Map<string, SignRequest>();
 
 // Curve constants
 const CURVE_SECP256K1 = 0; // For Ethereum
-import { bytesToHex } from "@noble/hashes/utils";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 /**
  * Derive Ethereum address from BCS-encoded SECP256K1 public key (x-coordinate only)
@@ -93,7 +93,7 @@ const ethClient = createPublicClient({
  * Processes DKG requests and creates dWallets on the Ika network
  */
 export class DKGExecutorService {
-  private client: SuiClient;
+  private client: SuiGrpcClient;
   private ikaConfig: IkaConfig;
   private ikaClient: IkaClient;
   private executor: SerialTransactionExecutor;
@@ -102,13 +102,11 @@ export class DKGExecutorService {
   private pollTimeout: NodeJS.Timeout | null = null;
 
   constructor() {
-    // Get network-specific RPC URL
-    const rpcUrl =
-      config.sui.network === "mainnet"
-        ? "https://ikafn-on-sui-2-mainnet.ika-network.net/"
-        : "https://sui-testnet-rpc.publicnode.com";
+    // Public fullnodes serve gRPC; JSON-RPC has been retired.
+    const baseUrl =
+      config.sui.grpcUrl ?? `https://fullnode.${config.sui.network}.sui.io:443`;
 
-    this.client = new SuiClient({ url: rpcUrl });
+    this.client = new SuiGrpcClient({ network: config.sui.network, baseUrl });
     this.ikaConfig = getNetworkConfig(config.sui.network);
     this.ikaClient = new IkaClient({
       suiClient: this.client,
@@ -523,12 +521,11 @@ export class DKGExecutorService {
     );
 
     // dry run tx here because maybe user already did have an enc key
-    const res = await this.client.devInspectTransactionBlock({
-      sender: this.adminKeypair.toSuiAddress(),
-      transactionBlock: tx,
-    });
+    // Simulate first, because the user may already have an encryption key.
+    tx.setSenderIfNotSet(this.adminKeypair.toSuiAddress());
+    const res = await this.client.simulateTransaction({ transaction: tx });
 
-    if (res.error) {
+    if (res.$kind === "FailedTransaction") {
       // user already has an enc key we shouldn't register it again
       tx = new Transaction();
       tx.setSender(adminAddress);
@@ -566,18 +563,19 @@ export class DKGExecutorService {
     logger.debug("Executing DKG transaction...");
 
     // Execute transaction
-    const result = await this.executor.executeTransaction(tx);
+    const executed = await this.executor.executeTransaction(tx);
+    const result = executed.Transaction ?? executed.FailedTransaction;
 
     logger.debug({ digest: result.digest }, "Transaction executed");
 
     // Wait for transaction and parse events (with timeout)
     const txResult = await withTimeout(
-      this.client.waitForTransaction({
-        digest: result.digest,
-        options: {
-          showEvents: true,
-        },
-      }),
+      this.client
+          .waitForTransaction({
+            digest: result.digest,
+            include: { events: true },
+          })
+          .then((waited) => waited.Transaction ?? waited.FailedTransaction),
       TIMEOUTS.TRANSACTION_WAIT,
       "DKG transaction confirmation"
     );
@@ -588,11 +586,11 @@ export class DKGExecutorService {
     let encryptedUserSecretKeyShareId: string | null = null;
 
     for (const event of txResult.events || []) {
-      if (event.type.includes("DWalletSessionEvent")) {
+      if (event.eventType.includes("DWalletSessionEvent")) {
         try {
           const parsedData = SessionsManagerModule.DWalletSessionEvent(
             CoordinatorInnerModule.DWalletDKGRequestEvent
-          ).fromBase64(event.bcs);
+          ).parse(event.bcs);
 
           dWalletCapObjectId = parsedData.event_data.dwallet_cap_id;
           dWalletObjectId = parsedData.event_data.dwallet_id;
@@ -601,7 +599,7 @@ export class DKGExecutorService {
               ?.encrypted_user_secret_key_share_id || null;
         } catch (parseError) {
           logger.warn(
-            { event: event.type, parseError },
+            { event: event.eventType, parseError },
             "Failed to parse DWalletSessionEvent"
           );
         }
@@ -611,7 +609,7 @@ export class DKGExecutorService {
     if (!dWalletCapObjectId || !dWalletObjectId) {
       logger.warn(
         {
-          events: txResult.events?.map((e) => e.type),
+          events: txResult.events?.map((e) => e.eventType),
           digest: result.digest,
         },
         "Could not find dWallet objects in transaction result"
@@ -677,29 +675,32 @@ export class DKGExecutorService {
     // Transfer presign to admin
     tx.transferObjects([presign], adminAddress);
 
-    const result = await this.executor.executeTransaction(tx);
+    const executed = await this.executor.executeTransaction(tx);
+    const result = executed.Transaction ?? executed.FailedTransaction;
 
     // Parse presign ID from events (with timeout)
     const txResult = await withTimeout(
-      this.client.waitForTransaction({
-        digest: result.digest,
-        options: { showEvents: true },
-      }),
+      this.client
+          .waitForTransaction({
+            digest: result.digest,
+            include: { events: true },
+          })
+          .then((waited) => waited.Transaction ?? waited.FailedTransaction),
       TIMEOUTS.TRANSACTION_WAIT,
       "Presign transaction confirmation"
     );
 
     let presignId: string | null = null;
     for (const event of txResult.events || []) {
-      if (event.type.includes("PresignRequestEvent")) {
+      if (event.eventType.includes("PresignRequestEvent")) {
         try {
           const parsedData = SessionsManagerModule.DWalletSessionEvent(
             CoordinatorInnerModule.PresignRequestEvent
-          ).fromBase64(event.bcs);
+          ).parse(event.bcs);
           presignId = parsedData.event_data.presign_id;
         } catch (err) {
           logger.warn(
-            { event: event.type, err },
+            { event: event.eventType, err },
             "Failed to parse presign event"
           );
         }
@@ -798,28 +799,31 @@ export class DKGExecutorService {
       tx
     );
 
-    const result = await this.executor.executeTransaction(tx);
+    const executed = await this.executor.executeTransaction(tx);
+    const result = executed.Transaction ?? executed.FailedTransaction;
 
     // Wait for sign transaction confirmation (with timeout)
     const txResult = await withTimeout(
-      this.client.waitForTransaction({
-        digest: result.digest,
-        options: { showEvents: true },
-      }),
+      this.client
+          .waitForTransaction({
+            digest: result.digest,
+            include: { events: true },
+          })
+          .then((waited) => waited.Transaction ?? waited.FailedTransaction),
       TIMEOUTS.TRANSACTION_WAIT,
       "Sign transaction confirmation"
     );
 
     let signId: string | null = null;
     for (const event of txResult.events || []) {
-      if (event.type.includes("SignRequestEvent")) {
+      if (event.eventType.includes("SignRequestEvent")) {
         try {
           const parsedData = SessionsManagerModule.DWalletSessionEvent(
             CoordinatorInnerModule.SignRequestEvent
-          ).fromBase64(event.bcs);
+          ).parse(event.bcs);
           signId = parsedData.event_data.sign_id;
         } catch (err) {
-          logger.warn({ event: event.type, err }, "Failed to parse sign event");
+          logger.warn({ event: event.eventType, err }, "Failed to parse sign event");
         }
       }
     }
